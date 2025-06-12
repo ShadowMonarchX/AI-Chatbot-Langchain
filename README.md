@@ -4,9 +4,6 @@ A powerful chatbot built using **LangChain**, designed to fetch, process, and an
 
 ---
 
-# Chatbot-using-Langchain-Pinecone-Streamlit
-Chatbot using Langchain, Pinecone, Streamlit
-
 </br>
 
 <h1>Screenshots:</h1>
