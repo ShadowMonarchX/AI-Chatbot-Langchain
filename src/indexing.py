@@ -1,45 +1,31 @@
-# 1. Loading documents from a directory with LangChain
 from langchain.document_loaders import DirectoryLoader
-
-directory = '/content/data'
-
-def load_docs(directory):
-  loader = DirectoryLoader(directory)
-  documents = loader.load()
-  return documents
-
-documents = load_docs(directory)
-len(documents)
-
-# 2. Splitting documents
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-
-def split_docs(documents,chunk_size=500,chunk_overlap=20):
-  text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-  docs = text_splitter.split_documents(documents)
-  return docs
-
-docs = split_docs(documents)
-print(len(docs))
-
-# 3. Creating embeddings
+from langchain.vectorstores import Chroma
 from langchain.embeddings import SentenceTransformerEmbeddings
-embeddings = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
+import os
 
-# 4. Storing embeddings in Pinecone
-import pinecone 
-from langchain.vectorstores import Pinecone
-pinecone.init(
-    api_key="",  # find at app.pinecone.io
-    environment="us-east-1-aws"  # next to api key in console
-)
-index_name = "langchain-chatbot"
-index = Pinecone.from_documents(docs, embeddings, index_name=index_name)
+# 1. Load documents from a directory
+def load_documents(directory="data"):
+    loader = DirectoryLoader(directory)
+    documents = loader.load()
+    print(f"📄 Loaded {len(documents)} documents.")
+    return documents
 
-# 5. Accessing embeddings from Pinecone and searching using similarity_search
-def get_similiar_docs(query,k=1,score=False):
-  if score:
-    similar_docs = index.similarity_search_with_score(query,k=k)
-  else:
-    similar_docs = index.similarity_search(query,k=k)
-  return similar_docs
+# 2. Split documents into chunks
+def split_documents(documents, chunk_size=500, chunk_overlap=50):
+    splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    docs = splitter.split_documents(documents)
+    print(f"✂️ Split into {len(docs)} chunks.")
+    return docs
+
+# 3. Create vector embeddings and store in Chroma
+def store_embeddings_in_chroma(docs, persist_directory="chroma_db"):
+    embeddings = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
+    vectordb = Chroma.from_documents(documents=docs, embedding=embeddings, persist_directory=persist_directory)
+    vectordb.persist()
+    print(f"✅ Embeddings stored in {persist_directory}.")
+
+if __name__ == "__main__":
+    docs = load_documents("data")
+    chunks = split_documents(docs)
+    store_embeddings_in_chroma(chunks)

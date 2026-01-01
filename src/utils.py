@@ -1,41 +1,43 @@
 from sentence_transformers import SentenceTransformer
-from pinecone import Pinecone
-from openai import OpenAI
-import streamlit as st
+from langchain.vectorstores import Chroma
+from langchain.embeddings import SentenceTransformerEmbeddings
 import os
+import streamlit as st
 
-client = OpenAI(
-    api_key=os.environ.get("OPENAI_API_KEY"),
-)
+# Load embedding model
+embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
-model = SentenceTransformer('all-MiniLM-L6-v2')
+# Load Chroma vector store from disk
+persist_directory = "chroma_db"
+chroma_embeddings = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
+db = Chroma(persist_directory=persist_directory, embedding_function=chroma_embeddings)
 
-pc = Pinecone(api_key='485df547-324f-4bd6-97d5-98c480140498', environment='us-east-1-aws')
-index = "chatbot2"
+# Find most relevant chunks from vector DB
+def find_match(query, k=2):
+    query_embedding = embedding_model.encode(query).tolist()
+    docs = db.similarity_search(query, k=k)
+    context = "\n".join([doc.page_content for doc in docs])
+    return context
 
-def find_match(input):
-    input_em = model.encode(input).tolist()
-    result = index.query(input_em, top_k=2, includeMetadata=True)
-    return result['matches'][0]['metadata']['text']+"\n"+result['matches'][1]['metadata']['text']
+# Refine user query using LLM
+def query_refiner(conversation, query, llm):
+    prompt = f"""
+    Given the following user query and conversation log, formulate a question 
+    that would be the most relevant to provide the user with an answer from a knowledge base.
 
-def query_refiner(conversation, query):
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-         messages=[
-            {"role": "system", "content": "You are an assistant that refines user queries."},
-            {"role": "user", "content": f"Given the following user query and conversation log, formulate a question that would be the most relevant to provide the user with an answer from a knowledge base.\n\nCONVERSATION LOG:\n{conversation}\n\nQuery: {query}\n\nRefined Query:"}
-        ],
-        temperature=0.7,
-        max_tokens=100, # Lowering the token limit for shorter responses
-        top_p=1,
-        frequency_penalty=0,
-        presence_penalty=0
-    )
-    return response['choices'][0]['text']
+    CONVERSATION LOG:
+    {conversation}
 
+    Query: {query}
+
+    Refined Query:
+    """
+    return llm.predict(prompt).strip()
+
+# Build conversation string from chat history
 def get_conversation_string():
     conversation_string = ""
-    for i in range(len(st.session_state['responses'])-1): 
-        conversation_string += "Human: "+st.session_state['requests'][i] + "\n"
-        conversation_string += "Bot: "+ st.session_state['responses'][i+1] + "\n"
+    for i in range(len(st.session_state['responses']) - 1):
+        conversation_string += "Human: " + st.session_state['requests'][i] + "\n"
+        conversation_string += "Bot: " + st.session_state['responses'][i + 1] + "\n"
     return conversation_string
